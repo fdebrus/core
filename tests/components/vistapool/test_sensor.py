@@ -1,42 +1,36 @@
 """Tests for the Vistapool sensor platform."""
 
-from __future__ import annotations
-
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
+import pytest
+from syrupy.assertion import SnapshotAssertion
+
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, snapshot_platform
 
 
-async def test_sensors_default_modules(
+@pytest.mark.usefixtures("entity_registry_enabled_by_default")
+async def test_all_entities(
     hass: HomeAssistant,
+    snapshot: SnapshotAssertion,
+    entity_registry: er.EntityRegistry,
     mock_config_entry: MockConfigEntry,
     mock_vistapool_client: AsyncMock,
     mock_pool_data: dict[str, Any],
 ) -> None:
-    """Test sensors come up with the expected states for the default fixture."""
+    """Test all sensor entities for the default fixture."""
     mock_vistapool_client.fetch_pool_data.return_value = mock_pool_data
     mock_config_entry.add_to_hass(hass)
 
-    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
-    await hass.async_block_till_done()
+    with patch("homeassistant.components.vistapool.PLATFORMS", [Platform.SENSOR]):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
 
-    # Always-on sensors.
-    assert hass.states.get("sensor.my_pool_temperature").state == "25.5"
-    assert hass.states.get("sensor.my_pool_filtration_intel_time") is not None
-
-    # Module-gated; the fixture sets hasPH=1, hasRX=1, hasHidro=1 with
-    # is_electrolysis=True.
-    assert hass.states.get("sensor.my_pool_ph").state == "7.42"
-    assert hass.states.get("sensor.my_pool_redox_potential").state == "707"
-    assert hass.states.get("sensor.my_pool_electrolysis").state == "5.0"
-
-    # Module-gated and disabled in the fixture (hasCD=0, hasCL=0, hasUV=0).
-    assert hass.states.get("sensor.my_pool_conductivity") is None
-    assert hass.states.get("sensor.my_pool_chlorine") is None
-    assert hass.states.get("sensor.my_pool_uv") is None
+    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
 
 
 async def test_sensors_hydrolysis_branch(
